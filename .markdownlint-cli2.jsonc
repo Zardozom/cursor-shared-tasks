@@ -1,0 +1,13 @@
+{
+  // Lint config for the shared task/notes markdown.
+  // Notes are free-form, so line length and inline HTML limits are relaxed.
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD033": false,
+    "MD041": false
+  },
+  "ignores": [
+    "node_modules"
+  ]
+}

@@ -1,0 +1,4 @@
+- [Обзор](README.md)
+- Задачи
+  - [Inbox](tasks/inbox.md)
+- [Контекст агента (AGENTS.md)](AGENTS.md)
