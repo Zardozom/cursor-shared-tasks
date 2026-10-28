@@ -14,7 +14,7 @@
 Файлы уже в Drive-зеркале otchety (`scripts/` + `.github/workflows/`). Один push с VAJRAPANI:
 
 ```powershell
-cd D:\GolgleDrivePK\Cursor\yandex-direct-otchety
+cd D:\GolgleDrive\Cursor\yandex-direct-otchety
 powershell -File scripts\commit_popolnenie_to_github.ps1
 ```
 

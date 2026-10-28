@@ -24,7 +24,7 @@ Cloud PAT без **Contents: Write** на `Zardozom/yandex-direct-otchety` → �
 
 ### B (без настроек токена, с диска)
 ```powershell
-cd D:\GolgleDrivePK\Cursor\yandex-direct-otchety
+cd D:\GolgleDrive\Cursor\yandex-direct-otchety
 powershell -File scripts\commit_popolnenie_to_github.ps1
 ```
 (Путь на ORION может быть через Яндекс.Диск — сверить hostname; зеркало Drive то же.)

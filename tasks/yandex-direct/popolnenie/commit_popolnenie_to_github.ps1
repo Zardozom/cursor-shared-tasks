@@ -2,7 +2,7 @@
 # Pushes Пополнение workflow into origin/main so cron-job.org 8739752 works.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$root = 'D:\GolgleDrivePK\Cursor\yandex-direct-otchety'
+$root = 'D:\GolgleDrive\Cursor\yandex-direct-otchety'
 Set-Location $root
 if (-not (Test-Path 'scripts\popolnenie_status.py')) { throw 'scripts\popolnenie_status.py missing — wait for Drive sync' }
 if (-not (Test-Path '.github\workflows\popolnenie-status.yml')) { throw '.github\workflows\popolnenie-status.yml missing — wait for Drive sync' }

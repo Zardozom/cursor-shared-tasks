@@ -71,9 +71,9 @@ GCP project: `starry-minutia-307711`.
 
 | Что | Путь |
 |---|---|
-| Проект отчётов | `D:\GolgleDrivePK\Cursor\yandex-direct-otchety` |
+| Проект отчётов | `D:\GolgleDrive\Cursor\yandex-direct-otchety` (старый путь `GolgleDrivePK` больше не использовать) |
 | SA JSON | `C:\Users\Windows\.config\google-sheets\service-account.json` |
-| `.env` (часто) | `D:\GolgleDrivePK\Cursor\.env` и/или `.env` в проекте otchety |
+| `.env` (часто) | `D:\GolgleDrive\Cursor\.env` и/или `.env` в проекте otchety |
 | Альтернатива в брифе | `D:\Yandex.Disk\AI\.env` |
 
 ORION: пути Яндекс.Диска другие (`C:\YandexDisk\…`) — сверять hostname, не копировать букву диска из памяти.
@@ -173,7 +173,7 @@ Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otche
 3. Sheets API → лист `Пополнение`: Аккаунт \| Номер кампании \| Статус \| Дата проверки \| Дата разархивации
 4. Выкл. авто-разархивации: `AUTO_UNARCHIVE=0` (по умолчанию включено). Ручной алиас: `unarchive_popolnenie.py`
 
-Копии уже в **Drive-зеркале** репо `yandex-direct-otchety` (папка Drive `1ff8_FvJWQy6vGuG0X-YovhZ8jPsiKFcG` = `D:\GolgleDrivePK\Cursor\yandex-direct-otchety`):
+Копии уже в **Drive-зеркале** репо `yandex-direct-otchety` (папка Drive `1ff8_FvJWQy6vGuG0X-YovhZ8jPsiKFcG` = `D:\GolgleDrive\Cursor\yandex-direct-otchety`):
 
 | Путь в репо | Drive |
 |---|---|
@@ -184,7 +184,7 @@ Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otche
 **Один раз запушить в GitHub** (Cloud PAT без Contents write — из Cloud нельзя):
 
 ```powershell
-cd D:\GolgleDrivePK\Cursor\yandex-direct-otchety
+cd D:\GolgleDrive\Cursor\yandex-direct-otchety
 powershell -File scripts\commit_popolnenie_to_github.ps1
 ```
 
