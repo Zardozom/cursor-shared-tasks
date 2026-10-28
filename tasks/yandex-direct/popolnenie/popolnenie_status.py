@@ -2,6 +2,10 @@
 """Weekly status of Direct campaigns named «Пополнение» → Google Sheet tab Пополнение.
 
 Runs Sunday 19:00 MSK (1h before weekly-reports). Secrets via .env from Actions.
+
+Columns: Аккаунт | Номер кампании | Статус | Дата проверки | Дата разархивации
+«Дата разархивации» заполняется при разархивации агентом по команде и сохраняется
+между еженедельными проверками; для архивных — пусто.
 """
 from __future__ import annotations
 
@@ -25,11 +29,18 @@ TAB = "Пополнение"
 CAMPAIGN_NAME = "Пополнение"
 API_CAMPAIGNS = "https://api.direct.yandex.com/json/v5/campaigns"
 MSK = ZoneInfo("Europe/Moscow")
+N_COLS = 5
+HEADER = ["Аккаунт", "Номер кампании", "Статус", "Дата проверки", "Дата разархивации"]
+COL_WIDTHS = [280, 140, 170, 130, 150]
 
 
 def load_env_files() -> dict[str, str]:
     env: dict[str, str] = {}
-    for path in [Path(".env"), Path(".env.clients"), Path(os.environ.get("GOOGLE_SERVICE_ACCOUNT_PATH", "")).parent.parent / ".env"]:
+    for path in [
+        Path(".env"),
+        Path(".env.clients"),
+        Path(os.environ.get("GOOGLE_SERVICE_ACCOUNT_PATH", "")).parent.parent / ".env",
+    ]:
         if not path or not Path(path).is_file():
             continue
         for line in Path(path).read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -38,7 +49,6 @@ def load_env_files() -> dict[str, str]:
                 continue
             k, v = line.split("=", 1)
             env[k.strip()] = v.strip().strip('"').strip("'")
-    # also process environment (Actions may inject)
     for k, v in os.environ.items():
         if k.startswith("YANDEX_DIRECT_TOKEN") or k.startswith("GOOGLE_"):
             env.setdefault(k, v)
@@ -54,12 +64,6 @@ def collect_tokens(env: dict[str, str]) -> dict[str, str]:
         m = re.match(r"^YANDEX_DIRECT_TOKEN_(e-\d+)$", k)
         if m:
             tokens[m.group(1)] = v
-            continue
-        m = re.match(r"^YANDEX_DIRECT_TOKEN_(.+)$", k)
-        if m and m.group(1) not in ("",):
-            # named tokens without login — skip unless login known later
-            pass
-    # CLIENT_TOKENS_JSON may map client-id -> token; not login. Prefer e- keys.
     return tokens
 
 
@@ -81,6 +85,44 @@ def fetch_account_labels(svc, spreadsheet_id: str) -> dict[str, str]:
             m = re.search(r"(.+?)\s*·\s*(e-\d+)", str(cell))
             if m:
                 out[m.group(2)] = f"{m.group(1).strip()} · {m.group(2)}"
+    return out
+
+
+def read_unarchive_dates(svc, spreadsheet_id: str) -> dict[str, str]:
+    """campaign_id -> дата разархивации (preserve across weekly refreshes)."""
+    out: dict[str, str] = {}
+    try:
+        vals = (
+            svc.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=f"'{TAB}'!A1:E200")
+            .execute()
+            .get("values", [])
+        )
+    except Exception:
+        return out
+    if len(vals) < 3:
+        return out
+    header = vals[2] if len(vals) > 2 else []
+    # Prefer named column; fallback: col E (index 4) or last col if 5 wide
+    unarch_idx = None
+    for i, name in enumerate(header):
+        if "разархив" in str(name).lower():
+            unarch_idx = i
+            break
+    if unarch_idx is None and len(header) >= 5:
+        unarch_idx = 4
+    if unarch_idx is None:
+        return out
+    for row in vals[3:]:
+        if len(row) < 2:
+            continue
+        cid = str(row[1]).strip()
+        if not cid.isdigit():
+            continue
+        date = row[unarch_idx].strip() if len(row) > unarch_idx else ""
+        if date:
+            out[cid] = date
     return out
 
 
@@ -124,7 +166,7 @@ def campaigns_popolnenie(login: str, token: str) -> tuple[str | None, str | None
         if not hits:
             hits = [c for c in camps if CAMPAIGN_NAME in (c.get("Name") or "")]
         if not hits:
-            return None, None, None  # no campaign
+            return None, None, None
         c = hits[0]
         state = (c.get("State") or "").upper()
         status_ru = "архивные" if state == "ARCHIVED" else "разархивированные"
@@ -145,10 +187,14 @@ def write_sheet(svc, spreadsheet_id: str, rows: list[dict], check_date: str) -> 
             sheet_id = s["properties"]["sheetId"]
             break
     if sheet_id is None:
-        resp = svc.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": [{"addSheet": {"properties": {"title": TAB}}}]},
-        ).execute()
+        resp = (
+            svc.spreadsheets()
+            .batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [{"addSheet": {"properties": {"title": TAB}}}]},
+            )
+            .execute()
+        )
         sheet_id = resp["replies"][0]["addSheet"]["properties"]["sheetId"]
 
     order = {"архивные": 0, "разархивированные": 1}
@@ -160,19 +206,31 @@ def write_sheet(svc, spreadsheet_id: str, rows: list[dict], check_date: str) -> 
     subtitle = (
         f"Кампании «Пополнение» · архивных {n_arch} · разархивированных {n_open} · проверка {check_date}"
     )
-    header = ["Аккаунт", "Номер кампании", "Статус", "Дата проверки"]
-    values = [[title, "", "", ""], [subtitle, "", "", ""], header]
+    values = [[title] + [""] * (N_COLS - 1), [subtitle] + [""] * (N_COLS - 1), HEADER]
     for r in rows:
-        values.append([r["label"], r["campaign_id"], r["status"], check_date])
+        unarch = r.get("unarchive_date") or ""
+        if r["status"] == "архивные":
+            unarch = ""
+        values.append([r["label"], r["campaign_id"], r["status"], check_date, unarch])
 
-    # clear + write
     try:
         svc.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            body={"requests": [{"unmergeCells": {"range": {
-                "sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 5,
-                "startColumnIndex": 0, "endColumnIndex": 4,
-            }}}]},
+            body={
+                "requests": [
+                    {
+                        "unmergeCells": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "startRowIndex": 0,
+                                "endRowIndex": 5,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": N_COLS,
+                            }
+                        }
+                    }
+                ]
+            },
         ).execute()
     except Exception:
         pass
@@ -187,109 +245,245 @@ def write_sheet(svc, spreadsheet_id: str, rows: list[dict], check_date: str) -> 
 
     last = 3 + len(rows)
     reqs = []
-    reqs.append({"updateSheetProperties": {
-        "properties": {"sheetId": sheet_id, "gridProperties": {
-            "rowCount": max(last + 5, 20), "columnCount": 4, "frozenRowCount": 3,
-        }, "tabColorStyle": {"rgbColor": rgb("059669")}},
-        "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,tabColorStyle",
-    }})
-    for i, w in enumerate([280, 140, 170, 130]):
-        reqs.append({"updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i + 1},
-            "properties": {"pixelSize": w}, "fields": "pixelSize",
-        }})
-    reqs.append({"mergeCells": {"range": {
-        "sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1,
-        "startColumnIndex": 0, "endColumnIndex": 4,
-    }, "mergeType": "MERGE_ALL"}})
-    reqs.append({"mergeCells": {"range": {
-        "sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2,
-        "startColumnIndex": 0, "endColumnIndex": 4,
-    }, "mergeType": "MERGE_ALL"}})
-    reqs.append({"repeatCell": {
-        "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 4},
-        "cell": {"userEnteredFormat": {
-            "backgroundColor": rgb("1F2937"),
-            "textFormat": {"foregroundColor": rgb("FFFFFF"), "fontSize": 14, "bold": True, "fontFamily": "Arial"},
-            "verticalAlignment": "MIDDLE",
-        }},
-        "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
-    }})
-    reqs.append({"repeatCell": {
-        "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": 4},
-        "cell": {"userEnteredFormat": {
-            "backgroundColor": rgb("F3F4F6"),
-            "textFormat": {"foregroundColor": rgb("4B5563"), "fontSize": 10, "fontFamily": "Arial"},
-            "verticalAlignment": "MIDDLE",
-        }},
-        "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
-    }})
-    reqs.append({"repeatCell": {
-        "range": {"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 3, "startColumnIndex": 0, "endColumnIndex": 4},
-        "cell": {"userEnteredFormat": {
-            "backgroundColor": rgb("374151"),
-            "textFormat": {"foregroundColor": rgb("FFFFFF"), "fontSize": 10, "bold": True, "fontFamily": "Arial"},
-            "verticalAlignment": "MIDDLE",
-        }},
-        "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
-    }})
-    if rows:
-        reqs.append({"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": 3, "endRowIndex": last, "startColumnIndex": 0, "endColumnIndex": 4},
-            "cell": {"userEnteredFormat": {
-                "textFormat": {"fontSize": 10, "fontFamily": "Arial", "foregroundColor": rgb("111827")},
-                "verticalAlignment": "MIDDLE",
-                "borders": {
-                    "top": {"style": "SOLID", "color": rgb("E5E7EB")},
-                    "bottom": {"style": "SOLID", "color": rgb("E5E7EB")},
-                    "left": {"style": "SOLID", "color": rgb("E5E7EB")},
-                    "right": {"style": "SOLID", "color": rgb("E5E7EB")},
+    reqs.append(
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_id,
+                    "gridProperties": {
+                        "rowCount": max(last + 5, 20),
+                        "columnCount": N_COLS,
+                        "frozenRowCount": 3,
+                    },
+                    "tabColorStyle": {"rgbColor": rgb("059669")},
                 },
-            }},
-            "fields": "userEnteredFormat(textFormat,verticalAlignment,borders)",
-        }})
+                "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,tabColorStyle",
+            }
+        }
+    )
+    for i, w in enumerate(COL_WIDTHS):
+        reqs.append(
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": i,
+                        "endIndex": i + 1,
+                    },
+                    "properties": {"pixelSize": w},
+                    "fields": "pixelSize",
+                }
+            }
+        )
+    for start, end in ((0, 1), (1, 2)):
+        reqs.append(
+            {
+                "mergeCells": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": start,
+                        "endRowIndex": end,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": N_COLS,
+                    },
+                    "mergeType": "MERGE_ALL",
+                }
+            }
+        )
+    reqs.append(
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": N_COLS,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": rgb("1F2937"),
+                        "textFormat": {
+                            "foregroundColor": rgb("FFFFFF"),
+                            "fontSize": 14,
+                            "bold": True,
+                            "fontFamily": "Arial",
+                        },
+                        "verticalAlignment": "MIDDLE",
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
+            }
+        }
+    )
+    reqs.append(
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,
+                    "endRowIndex": 2,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": N_COLS,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": rgb("F3F4F6"),
+                        "textFormat": {
+                            "foregroundColor": rgb("4B5563"),
+                            "fontSize": 10,
+                            "fontFamily": "Arial",
+                        },
+                        "verticalAlignment": "MIDDLE",
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
+            }
+        }
+    )
+    reqs.append(
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 2,
+                    "endRowIndex": 3,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": N_COLS,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": rgb("374151"),
+                        "textFormat": {
+                            "foregroundColor": rgb("FFFFFF"),
+                            "fontSize": 10,
+                            "bold": True,
+                            "fontFamily": "Arial",
+                        },
+                        "verticalAlignment": "MIDDLE",
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
+            }
+        }
+    )
+    if rows:
+        reqs.append(
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 3,
+                        "endRowIndex": last,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": N_COLS,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "fontSize": 10,
+                                "fontFamily": "Arial",
+                                "foregroundColor": rgb("111827"),
+                            },
+                            "verticalAlignment": "MIDDLE",
+                            "borders": {
+                                "top": {"style": "SOLID", "color": rgb("E5E7EB")},
+                                "bottom": {"style": "SOLID", "color": rgb("E5E7EB")},
+                                "left": {"style": "SOLID", "color": rgb("E5E7EB")},
+                                "right": {"style": "SOLID", "color": rgb("E5E7EB")},
+                            },
+                        }
+                    },
+                    "fields": "userEnteredFormat(textFormat,verticalAlignment,borders)",
+                }
+            }
+        )
     for i, row in enumerate(rows):
         r = 3 + i
         bg = rgb("FFFFFF") if i % 2 == 0 else rgb("F9FAFB")
-        reqs.append({"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": r, "endRowIndex": r + 1, "startColumnIndex": 0, "endColumnIndex": 4},
-            "cell": {"userEnteredFormat": {"backgroundColor": bg}},
-            "fields": "userEnteredFormat.backgroundColor",
-        }})
-        reqs.append({"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": r, "endRowIndex": r + 1, "startColumnIndex": 1, "endColumnIndex": 2},
-            "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-            "fields": "userEnteredFormat.horizontalAlignment",
-        }})
+        reqs.append(
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r,
+                        "endRowIndex": r + 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": N_COLS,
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                    "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+        for col in (1, 3, 4):
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": r,
+                            "endRowIndex": r + 1,
+                            "startColumnIndex": col,
+                            "endColumnIndex": col + 1,
+                        },
+                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+                        "fields": "userEnteredFormat.horizontalAlignment",
+                    }
+                }
+            )
         if row["status"] == "архивные":
             sbg, sfg = rgb("E5E7EB"), rgb("4B5563")
         else:
             sbg, sfg = rgb("D1FAE5"), rgb("065F46")
-        reqs.append({"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": r, "endRowIndex": r + 1, "startColumnIndex": 2, "endColumnIndex": 3},
-            "cell": {"userEnteredFormat": {
-                "backgroundColor": sbg,
-                "textFormat": {"foregroundColor": sfg, "bold": True, "fontSize": 10, "fontFamily": "Arial"},
-                "horizontalAlignment": "CENTER",
-            }},
-            "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
-        }})
-        reqs.append({"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": r, "endRowIndex": r + 1, "startColumnIndex": 3, "endColumnIndex": 4},
-            "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-            "fields": "userEnteredFormat.horizontalAlignment",
-        }})
-    reqs.append({"setBasicFilter": {"filter": {"range": {
-        "sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": max(last, 3),
-        "startColumnIndex": 0, "endColumnIndex": 4,
-    }}}})
+        reqs.append(
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r,
+                        "endRowIndex": r + 1,
+                        "startColumnIndex": 2,
+                        "endColumnIndex": 3,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": sbg,
+                            "textFormat": {
+                                "foregroundColor": sfg,
+                                "bold": True,
+                                "fontSize": 10,
+                                "fontFamily": "Arial",
+                            },
+                            "horizontalAlignment": "CENTER",
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+                }
+            }
+        )
+    reqs.append(
+        {
+            "setBasicFilter": {
+                "filter": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 2,
+                        "endRowIndex": max(last, 3),
+                        "startColumnIndex": 0,
+                        "endColumnIndex": N_COLS,
+                    }
+                }
+            }
+        }
+    )
     svc.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": reqs}).execute()
 
 
 def main() -> int:
     env = load_env_files()
     tokens = collect_tokens(env)
-    # also pick up YANDEX_DIRECT_TOKEN_* from env that might be named ABC_* mapping via roster — scan all e- keys only
     if not tokens:
         print("No YANDEX_DIRECT_TOKEN_e-* tokens found", file=sys.stderr)
         return 1
@@ -307,6 +501,7 @@ def main() -> int:
     )
     svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
     labels = fetch_account_labels(svc, spreadsheet_id)
+    prev_unarch = read_unarchive_dates(svc, spreadsheet_id)
 
     check_date = datetime.now(MSK).strftime("%d.%m.%Y")
     rows: list[dict] = []
@@ -323,8 +518,17 @@ def main() -> int:
             time.sleep(0.3)
             continue
         label = labels.get(login) or login
-        rows.append({"label": label, "campaign_id": cid, "status": status or "разархивированные"})
-        print(f"OK {label} {cid} {status}")
+        status = status or "разархивированные"
+        unarch = prev_unarch.get(cid, "") if status == "разархивированные" else ""
+        rows.append(
+            {
+                "label": label,
+                "campaign_id": cid,
+                "status": status,
+                "unarchive_date": unarch,
+            }
+        )
+        print(f"OK {label} {cid} {status} unarch={unarch or '-'}")
         time.sleep(0.35)
 
     write_sheet(svc, spreadsheet_id, rows, check_date)

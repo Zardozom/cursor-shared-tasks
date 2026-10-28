@@ -20,10 +20,23 @@ Drive (рядом с weekly-reports):
 `popolnenie-status.yml` id `1lqh2rQew2EAhuvyaJ7iJzX0hT3cJxtKG`,
 `popolnenie_status.py` id `1QUN-iaoArmt8rwU8C_7TAxsPnw7_tFff`.
 
+## Колонки листа
+
+Аккаунт | Номер кампании | Статус | Дата проверки | **Дата разархивации**
+
+Дата разархивации — только для разархивированных; ставится при разархивации по команде.
+
 ## Cloud fallback (уже работает)
 
 ```bash
 python tasks/yandex-direct/popolnenie/cloud_run_popolnenie.py
+```
+
+Разархивация по явной команде:
+
+```bash
+# из cwd с .env (cloud_run готовит /tmp/popolnenie-run) либо:
+python tasks/yandex-direct/popolnenie/unarchive_popolnenie.py
 ```
 
 Нужны SA `~/.config/google-sheets/service-account.json` и `/tmp/direct-secrets/.env` (скачать с Drive по playbook).
