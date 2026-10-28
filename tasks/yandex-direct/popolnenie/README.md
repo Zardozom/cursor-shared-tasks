@@ -11,14 +11,12 @@
 
 ## Файлы для репо `Zardozom/yandex-direct-otchety`
 
-Скопировать и запушить в `main` (VAJRAPANI: `D:\GolgleDrivePK\Cursor\yandex-direct-otchety`):
+Файлы уже в Drive-зеркале otchety (`scripts/` + `.github/workflows/`). Один push с VAJRAPANI:
 
-- `scripts/popolnenie_status.py` ← `popolnenie_status.py`
-- `.github/workflows/popolnenie-status.yml` ← `popolnenie-status.yml`
-
-Drive (рядом с weekly-reports):
-`popolnenie-status.yml` id `1lqh2rQew2EAhuvyaJ7iJzX0hT3cJxtKG`,
-`popolnenie_status.py` id `1QUN-iaoArmt8rwU8C_7TAxsPnw7_tFff`.
+```powershell
+cd D:\GolgleDrivePK\Cursor\yandex-direct-otchety
+powershell -File scripts\commit_popolnenie_to_github.ps1
+```
 
 ## Колонки листа
 

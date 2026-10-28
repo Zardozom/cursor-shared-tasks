@@ -173,8 +173,22 @@ Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otche
 3. Sheets API → лист `Пополнение`: Аккаунт \| Номер кампании \| Статус \| Дата проверки \| Дата разархивации
 4. Выкл. авто-разархивации: `AUTO_UNARCHIVE=0` (по умолчанию включено). Ручной алиас: `unarchive_popolnenie.py`
 
-Копии для установки в otchety (если ещё нет в репо): Drive `popolnenie-status.yml` / `popolnenie_status.py` рядом с `weekly-reports.yml`; handoff `tasks/yandex-direct/popolnenie/`.  
-Локально VAJRAPANI: `D:\GolgleDrivePK\Cursor\yandex-direct-otchety` — положить в `scripts/` и `.github/workflows/`, push в `main`.
+Копии уже в **Drive-зеркале** репо `yandex-direct-otchety` (папка Drive `1ff8_FvJWQy6vGuG0X-YovhZ8jPsiKFcG` = `D:\GolgleDrivePK\Cursor\yandex-direct-otchety`):
+
+| Путь в репо | Drive |
+|---|---|
+| `scripts/popolnenie_status.py` | id `1ZDr2Yit6uK9da914YutiOfH8_87jDJOC` |
+| `.github/workflows/popolnenie-status.yml` | id `13YfR_VPk8ZclMo5vomPjL1dYJfigigpg` |
+| `scripts/commit_popolnenie_to_github.ps1` | id `1r3tK-6Qx-oZ25fjiGDMTCXVTZ0WMOXT4` |
+
+**Один раз запушить в GitHub** (Cloud PAT без Contents write — из Cloud нельзя):
+
+```powershell
+cd D:\GolgleDrivePK\Cursor\yandex-direct-otchety
+powershell -File scripts\commit_popolnenie_to_github.ps1
+```
+
+После push cron-job.org **8739752** начнёт успешно диспатчить workflow. До push рабочий путь: Cloud timer + `cloud_run_popolnenie.py`.
 
 Первый прогон: 2026-10-28 → 12 аккаунтов (см. `tasks/2026-10-28-popolnenie-sheet.md`).
 
