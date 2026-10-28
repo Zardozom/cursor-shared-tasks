@@ -55,6 +55,7 @@ def main() -> int:
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
     env["TZ"] = "Europe/Moscow"
+    env.setdefault("AUTO_UNARCHIVE", "1")
 
     # Run with cwd=work so load_env_files finds .env
     cmd = [sys.executable, str(SCRIPT)]

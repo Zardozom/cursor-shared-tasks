@@ -4,8 +4,10 @@
 Runs Sunday 19:00 MSK (1h before weekly-reports). Secrets via .env from Actions.
 
 Columns: Аккаунт | Номер кампании | Статус | Дата проверки | Дата разархивации
-«Дата разархивации» заполняется при разархивации агентом по команде и сохраняется
-между еженедельными проверками; для архивных — пусто.
+
+Sunday check (default): if a «Пополнение» campaign is ARCHIVED — unarchive it via
+campaigns.unarchive and set «Дата разархивации» = today (MSK). Existing dates for
+already-open campaigns are preserved. Disable with AUTO_UNARCHIVE=0.
 """
 from __future__ import annotations
 
@@ -126,24 +128,20 @@ def read_unarchive_dates(svc, spreadsheet_id: str) -> dict[str, str]:
     return out
 
 
-def campaigns_popolnenie(login: str, token: str) -> tuple[str | None, str | None, str | None]:
-    """Return (campaign_id, status_ru, error)."""
-    headers = {
+def _direct_headers(login: str, token: str) -> dict[str, str]:
+    return {
         "Authorization": f"Bearer {token}",
         "Client-Login": login,
         "Accept-Language": "ru",
         "Content-Type": "application/json; charset=utf-8",
     }
-    body = {
-        "method": "get",
-        "params": {
-            "SelectionCriteria": {},
-            "FieldNames": ["Id", "Name", "State", "Status"],
-        },
-    }
+
+
+def _post_campaigns(login: str, token: str, body: dict) -> tuple[dict | None, str | None]:
+    """POST campaigns API. Returns (json, error). Retries without/with Use-Operator-Units."""
     last_err = None
     for use_ops in (False, True):
-        h = dict(headers)
+        h = _direct_headers(login, token)
         if use_ops:
             h["Use-Operator-Units"] = "true"
         try:
@@ -159,19 +157,56 @@ def campaigns_popolnenie(login: str, token: str) -> tuple[str | None, str | None
             code = str(data["error"].get("error_code"))
             if code == "8000" and not use_ops:
                 continue
-            last_err = f"api_{code}"
+            last_err = f"api_{code}:{data['error'].get('error_string', '')}"
             continue
-        camps = data.get("result", {}).get("Campaigns") or []
-        hits = [c for c in camps if (c.get("Name") or "").strip() == CAMPAIGN_NAME]
-        if not hits:
-            hits = [c for c in camps if CAMPAIGN_NAME in (c.get("Name") or "")]
-        if not hits:
-            return None, None, None
-        c = hits[0]
-        state = (c.get("State") or "").upper()
-        status_ru = "архивные" if state == "ARCHIVED" else "разархивированные"
-        return str(c["Id"]), status_ru, None
-    return None, None, last_err or "failed"
+        return data, None
+    return None, last_err or "failed"
+
+
+def campaigns_popolnenie(login: str, token: str) -> tuple[str | None, str | None, str | None]:
+    """Return (campaign_id, status_ru, error)."""
+    body = {
+        "method": "get",
+        "params": {
+            "SelectionCriteria": {},
+            "FieldNames": ["Id", "Name", "State", "Status"],
+        },
+    }
+    data, err = _post_campaigns(login, token, body)
+    if err:
+        return None, None, err
+    assert data is not None
+    camps = data.get("result", {}).get("Campaigns") or []
+    hits = [c for c in camps if (c.get("Name") or "").strip() == CAMPAIGN_NAME]
+    if not hits:
+        hits = [c for c in camps if CAMPAIGN_NAME in (c.get("Name") or "")]
+    if not hits:
+        return None, None, None
+    c = hits[0]
+    state = (c.get("State") or "").upper()
+    status_ru = "архивные" if state == "ARCHIVED" else "разархивированные"
+    return str(c["Id"]), status_ru, None
+
+
+def unarchive_campaign(login: str, token: str, campaign_id: str) -> str | None:
+    """Unarchive campaign. Return None on success, else error string."""
+    body = {
+        "method": "unarchive",
+        "params": {"SelectionCriteria": {"Ids": [int(campaign_id)]}},
+    }
+    data, err = _post_campaigns(login, token, body)
+    if err:
+        return err
+    assert data is not None
+    result = data.get("result") or {}
+    if result.get("Errors"):
+        return f"partial:{result['Errors']}"
+    return None
+
+
+def auto_unarchive_enabled() -> bool:
+    raw = (os.environ.get("AUTO_UNARCHIVE") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
 
 def rgb(h: str) -> dict:
@@ -504,8 +539,10 @@ def main() -> int:
     prev_unarch = read_unarchive_dates(svc, spreadsheet_id)
 
     check_date = datetime.now(MSK).strftime("%d.%m.%Y")
+    do_unarch = auto_unarchive_enabled()
     rows: list[dict] = []
     errors: list[str] = []
+    unarchived_n = 0
     for login in sorted(tokens.keys()):
         cid, status, err = campaigns_popolnenie(login, tokens[login])
         if err:
@@ -520,19 +557,38 @@ def main() -> int:
         label = labels.get(login) or login
         status = status or "разархивированные"
         unarch = prev_unarch.get(cid, "") if status == "разархивированные" else ""
+
+        if status == "архивные" and do_unarch:
+            uerr = unarchive_campaign(login, tokens[login], cid)
+            if uerr:
+                errors.append(f"{login}:{cid}:unarchive:{uerr}")
+                print(f"UNARCHIVE_FAIL {label} {cid} {uerr}")
+            else:
+                status = "разархивированные"
+                unarch = check_date
+                unarchived_n += 1
+                print(f"UNARCHIVED {label} {cid} date={check_date}")
+            time.sleep(0.5)
+        elif status == "архивные":
+            unarch = ""
+            print(f"ARCHIVED {label} {cid} (AUTO_UNARCHIVE off)")
+
         rows.append(
             {
                 "label": label,
                 "campaign_id": cid,
                 "status": status,
-                "unarchive_date": unarch,
+                "unarchive_date": unarch if status == "разархивированные" else "",
             }
         )
-        print(f"OK {label} {cid} {status} unarch={unarch or '-'}")
+        if status != "архивные" or not do_unarch:
+            print(f"OK {label} {cid} {status} unarch={unarch or '-'}")
         time.sleep(0.35)
 
     write_sheet(svc, spreadsheet_id, rows, check_date)
-    print(f"Wrote {len(rows)} rows to tab {TAB}; errors={len(errors)}")
+    print(
+        f"Wrote {len(rows)} rows to tab {TAB}; unarchived={unarchived_n}; errors={len(errors)}"
+    )
     return 0 if rows else (1 if errors else 0)
 
 

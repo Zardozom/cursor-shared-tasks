@@ -167,11 +167,11 @@ Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otche
 | Cloud fallback | `python tasks/yandex-direct/popolnenie/cloud_run_popolnenie.py` (SA + `/tmp/direct-secrets/.env`) |
 | Cloud timer | recurring cron `0 16 * * 0` UTC на этом агенте (пока workflow не в otchety `main`) |
 
-Шаги пайплайна:
+Шаги пайплайна (вс 19:00):
 1. Токены `YANDEX_DIRECT_TOKEN_e-*` → `campaigns.get`, имя «Пополнение»
-2. State `ARCHIVED` → «архивные», иначе «разархивированные»
-3. Sheets API → лист `Пополнение`: Аккаунт \| Номер кампании \| Статус \| Дата проверки \| Дата разархивации (МСК)
-4. «Дата разархивации» — только для разархивированных; ставит агент при разархивации по команде (`unarchive_popolnenie.py`), еженедельный статус дату сохраняет
+2. Если State `ARCHIVED` → **сразу `campaigns.unarchive`**, «Дата разархивации» = сегодня (МСК); иначе статус «разархивированные», прежнюю дату сохранить
+3. Sheets API → лист `Пополнение`: Аккаунт \| Номер кампании \| Статус \| Дата проверки \| Дата разархивации
+4. Выкл. авто-разархивации: `AUTO_UNARCHIVE=0` (по умолчанию включено). Ручной алиас: `unarchive_popolnenie.py`
 
 Копии для установки в otchety (если ещё нет в репо): Drive `popolnenie-status.yml` / `popolnenie_status.py` рядом с `weekly-reports.yml`; handoff `tasks/yandex-direct/popolnenie/`.  
 Локально VAJRAPANI: `D:\GolgleDrivePK\Cursor\yandex-direct-otchety` — положить в `scripts/` и `.github/workflows/`, push в `main`.

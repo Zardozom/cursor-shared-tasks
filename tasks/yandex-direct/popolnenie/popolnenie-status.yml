@@ -4,6 +4,7 @@ name: Пополнение campaign status
 # 19:00 MSK (Europe/Moscow, UTC+3, no DST since 2014) = 16:00 UTC.
 # На час раньше weekly-reports.yml (вс 20:00 MSK / 17:00 UTC).
 # Дубль: cron-job.org «Пополнение статус» (Europe/Moscow вс 19:00) → workflow_dispatch.
+# При ARCHIVED: auto unarchive + «Дата разархивации»=сегодня (AUTO_UNARCHIVE=1).
 on:
   schedule:
     - cron: "0 16 * * 0"
@@ -128,8 +129,9 @@ jobs:
           print(f"Roster-mapped {len(lines)} login tokens")
           PY
 
-      - name: Update Пополнение sheet
+      - name: Update Пополнение sheet (auto-unarchive if ARCHIVED)
         env:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: "1"
+          AUTO_UNARCHIVE: "1"
         run: uv run python scripts/popolnenie_status.py
