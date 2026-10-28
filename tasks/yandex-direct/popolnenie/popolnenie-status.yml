@@ -1,0 +1,135 @@
+name: Пополнение campaign status
+
+# cron GitHub Actions = UTC.
+# 19:00 MSK (Europe/Moscow, UTC+3, no DST since 2014) = 16:00 UTC.
+# На час раньше weekly-reports.yml (вс 20:00 MSK / 17:00 UTC).
+# Дубль: cron-job.org «Пополнение статус» (Europe/Moscow вс 19:00) → workflow_dispatch.
+on:
+  schedule:
+    - cron: "0 16 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: popolnenie-status
+  cancel-in-progress: false
+
+jobs:
+  popolnenie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TZ: Europe/Moscow
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Write secrets to files
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YANDEX_DIRECT_TOKEN: ${{ secrets.YANDEX_DIRECT_TOKEN }}
+          YANDEX_DIRECT_TOKEN_ABC_TUNING: ${{ secrets.YANDEX_DIRECT_TOKEN_ABC_TUNING }}
+          YANDEX_DIRECT_TOKEN_ABC_MK1: ${{ secrets.YANDEX_DIRECT_TOKEN_ABC_MK1 }}
+          YANDEX_DIRECT_TOKEN_ABC_MK2: ${{ secrets.YANDEX_DIRECT_TOKEN_ABC_MK2 }}
+          CLIENT_TOKENS_JSON: ${{ secrets.CLIENT_TOKENS_JSON }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/google-sheets"
+          if [ -z "${GOOGLE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "Missing secret GOOGLE_SERVICE_ACCOUNT_JSON" >&2
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > "$HOME/.config/google-sheets/service-account.json"
+          {
+            echo "GOOGLE_SERVICE_ACCOUNT_PATH=$HOME/.config/google-sheets/service-account.json"
+            echo "GOOGLE_SHEETS_SPREADSHEET_ID=1gsjP650gW75Rc7eYwimRm578AzOX_V1Xh57r3cgrNSI"
+            echo "YANDEX_DIRECT_TOKEN=${YANDEX_DIRECT_TOKEN:-}"
+            echo "YANDEX_DIRECT_TOKEN_ABC_TUNING=${YANDEX_DIRECT_TOKEN_ABC_TUNING:-}"
+            echo "YANDEX_DIRECT_TOKEN_ABC_MK1=${YANDEX_DIRECT_TOKEN_ABC_MK1:-}"
+            echo "YANDEX_DIRECT_TOKEN_ABC_MK2=${YANDEX_DIRECT_TOKEN_ABC_MK2:-}"
+          } > .env
+          # Expand CLIENT_TOKENS_JSON + write full .env.clients from repo secret map if present
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          raw = os.environ.get("CLIENT_TOKENS_JSON") or ""
+          lines = []
+          if raw.strip():
+              data = json.loads(raw)
+              for cid, tok in data.items():
+                  key = f"YANDEX_DIRECT_TOKEN_{str(cid).upper().replace('-', '_')}"
+                  lines.append(f"{key}={tok}")
+          # Also pass through any YANDEX_DIRECT_TOKEN_e-* already in GitHub Actions env via secrets —
+          # fine-grained: dump from os.environ
+          for k, v in os.environ.items():
+              if re.match(r"^YANDEX_DIRECT_TOKEN_e-\d+$", k) and v:
+                  lines.append(f"{k}={v}")
+          Path(".env.clients").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+          print(f"Wrote .env.clients with {len(lines)} entries")
+          PY
+
+      - name: Merge per-login tokens from CLIENT_TOKENS_JSON into e- keys via roster
+        env:
+          CLIENT_TOKENS_JSON: ${{ secrets.CLIENT_TOKENS_JSON }}
+        run: |
+          uv run python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          try:
+              import yaml
+          except ImportError:
+              raise SystemExit(0)
+          roster_path = Path("memory/clients/roster.yaml")
+          if not roster_path.is_file():
+              raise SystemExit(0)
+          roster = yaml.safe_load(roster_path.read_text(encoding="utf-8")) or {}
+          raw = os.environ.get("CLIENT_TOKENS_JSON") or ""
+          cmap = json.loads(raw) if raw.strip() else {}
+          # Build login->token from env files already written + named secrets
+          env = {}
+          for p in [Path(".env"), Path(".env.clients")]:
+              if p.is_file():
+                  for line in p.read_text(encoding="utf-8").splitlines():
+                      if "=" in line and not line.startswith("#"):
+                          k,v=line.split("=",1); env[k]=v
+          for k,v in os.environ.items():
+              if k.startswith("YANDEX_DIRECT_TOKEN") and v:
+                  env[k]=v
+          lines = []
+          for c in roster.get("clients") or []:
+              if not c.get("enabled", True):
+                  continue
+              d = c.get("direct") or {}
+              login = d.get("login")
+              if not login:
+                  continue
+              tok = env.get(f"YANDEX_DIRECT_TOKEN_{login}")
+              if not tok:
+                  te = d.get("token_env")
+                  if te:
+                      tok = env.get(te) or os.environ.get(te)
+              if not tok:
+                  tok = cmap.get(c.get("id")) or cmap.get(login)
+              if not tok:
+                  tok = env.get("YANDEX_DIRECT_TOKEN")
+              if tok:
+                  lines.append(f"YANDEX_DIRECT_TOKEN_{login}={tok}")
+          Path(".env.clients").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+          print(f"Roster-mapped {len(lines)} login tokens")
+          PY
+
+      - name: Update Пополнение sheet
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        run: uv run python scripts/popolnenie_status.py

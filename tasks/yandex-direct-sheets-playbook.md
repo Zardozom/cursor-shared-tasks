@@ -25,7 +25,7 @@
 | Балансы | Остатки по кабинетам (cron balances) |
 | АВС, Тойота Дубровка, Тойота Алтуфьево, Вольво Дубровка, Акцент, Тимьян, Арбалеты, Игры Блоки | Недельные отчёты по клиентам |
 | АВС все метрики | Расширенный / legacy |
-| **Пополнение** | Мониторинг кампаний «Пополнение»: Аккаунт \| Статус \| Дата проверки |
+| **Пополнение** | Мониторинг кампаний «Пополнение»: Аккаунт \| Номер кампании \| Статус \| Дата проверки |
 
 ---
 
@@ -56,6 +56,8 @@ GCP project: `starry-minutia-307711`.
 | `roster.yaml` | `1EgCnZsPutoQioRY4wBxlQQ3XiVctTCUp` | `roster.yaml` |
 | `.env.example` | `1gDuId9tfIuPKR7wHJ-kStB8LN9qKSqx_` | `.env.example` |
 | weekly-reports.yml | `1OD5MUM3SxhnUZv9JNr_SK0W590qVctZR` | `weekly-reports.yml` |
+| popolnenie-status.yml | `1lqh2rQew2EAhuvyaJ7iJzX0hT3cJxtKG` | `popolnenie-status.yml` |
+| popolnenie_status.py | `1QUN-iaoArmt8rwU8C_7TAxsPnw7_tFff` | `popolnenie_status.py` |
 | balances.yml | `1PaitpZbchRogmXV66NCAeMjTWe-mwYcS` | `balances.yml` |
 | README пайплайна | `1wltO2m_KKQReQA7dYMSOkXo1Hdm7cniQ` | `README.md` |
 | Архив чата настройки | `1MiK-s23TywIuPFUhNh3sezbLJrQjOhNT` | `yandex-direkt-otchety-chat.md` |
@@ -82,8 +84,21 @@ ORION: пути Яндекс.Диска другие (`C:\YandexDisk\…`) — �
 |---|---|
 | Репо | https://github.com/Zardozom/yandex-direct-otchety (private) |
 | Cloud `gh` token | часто **не видит** private repo — опираться на копии на Drive / secrets в Actions |
-| Cron | воскресенье **20:00 МСК** (`0 17 * * 0` UTC) — `.github/workflows/weekly-reports.yml` |
+| Cron отчёты | воскресенье **20:00 МСК** (`0 17 * * 0` UTC) — `.github/workflows/weekly-reports.yml` |
+| Cron Пополнение | воскресенье **19:00 МСК** (`0 16 * * 0` UTC) — `.github/workflows/popolnenie-status.yml` (на час раньше отчёта) |
 | Secrets Actions | `YANDEX_DIRECT_TOKEN*`, `CLIENT_TOKENS_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `CALLTOUCH_API_TOKEN` (для лидов Колтач) |
+
+### cron-job.org (зеркало Actions dispatch, Europe/Moscow)
+
+| jobId | Title | Когда | Workflow |
+|---|---|---|---|
+| `8680855` | Балансы колонка 07 | ежедневно 06:47 | `balances.yml` |
+| `8680857` | Балансы колонка 16 | ежедневно 15:47 | `balances.yml` |
+| `8680859` | Балансы колонка 22 | ежедневно 21:47 | `balances.yml` |
+| **`8739752`** | **Пополнение статус** | **вс 19:00** | `popolnenie-status.yml` |
+| `8680907` | Воскресный отчёт | вс 20:00 | `weekly-reports.yml` |
+
+Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otchety/actions/workflows/<file>/dispatches`, body `{"ref":"main"}`.
 
 Этот репо handoff: `Zardozom/cursor-shared-tasks` → `tasks/`.
 
@@ -140,13 +155,25 @@ ORION: пути Яндекс.Диска другие (`C:\YandexDisk\…`) — �
 - Workflow/скрипт balances (Drive: `balances.yml`) → лист **Балансы**
 - Обновления видны в таблице (lastModified часто `cursor-sheets@…`)
 
-### C. Мониторинг «Пополнение»
+### C. Мониторинг «Пополнение» (вс 19:00 МСК)
 
-1. Скачать SA + `.env` с Drive в VM Cloud
-2. Sheets API: лист `Пополнение` (создать если нет)
-3. По каждому `YANDEX_DIRECT_TOKEN_e-*`: `campaigns.get`, имя кампании «Пополнение»
-4. Запись: `Аккаунт | Статус | Дата проверки` (дата = день проверки, МСК)
-5. Периодичность по ТЗ: **раз в неделю**
+**Расписание:** каждое воскресенье **19:00 МСК** — на час раньше воскресного отчёта (20:00).
+
+| Слой | Что |
+|---|---|
+| GitHub Actions | `.github/workflows/popolnenie-status.yml` → cron `0 16 * * 0` UTC + `workflow_dispatch` |
+| cron-job.org | job **`8739752`** «Пополнение статус» → POST dispatch того же workflow |
+| Скрипт | `scripts/popolnenie_status.py` (копия handoff: `tasks/yandex-direct/popolnenie/`) |
+| Cloud fallback | `python tasks/yandex-direct/popolnenie/cloud_run_popolnenie.py` (SA + `/tmp/direct-secrets/.env`) |
+| Cloud timer | recurring cron `0 16 * * 0` UTC на этом агенте (пока workflow не в otchety `main`) |
+
+Шаги пайплайна:
+1. Токены `YANDEX_DIRECT_TOKEN_e-*` → `campaigns.get`, имя «Пополнение»
+2. State `ARCHIVED` → «архивные», иначе «разархивированные»
+3. Sheets API → лист `Пополнение`: Аккаунт \| Номер кампании \| Статус \| Дата проверки (МСК)
+
+Копии для установки в otchety (если ещё нет в репо): Drive `popolnenie-status.yml` / `popolnenie_status.py` рядом с `weekly-reports.yml`; handoff `tasks/yandex-direct/popolnenie/`.  
+Локально VAJRAPANI: `D:\GolgleDrivePK\Cursor\yandex-direct-otchety` — положить в `scripts/` и `.github/workflows/`, push в `main`.
 
 Первый прогон: 2026-10-28 → 12 аккаунтов (см. `tasks/2026-10-28-popolnenie-sheet.md`).
 
