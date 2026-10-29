@@ -165,7 +165,8 @@ Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otche
 | cron-job.org | job **`8739752`** «Пополнение статус» → POST dispatch того же workflow |
 | Скрипт | `scripts/popolnenie_status.py` (копия handoff: `tasks/yandex-direct/popolnenie/`) |
 | Cloud fallback | `python tasks/yandex-direct/popolnenie/cloud_run_popolnenie.py` (SA + `/tmp/direct-secrets/.env`) |
-| Cloud timer | recurring cron `0 16 * * 0` UTC на этом агенте (пока workflow не в otchety `main`) |
+| Cloud timer | backup: recurring cron `0 16 * * 0` UTC → `cloud_run_popolnenie.py` |
+| GitHub dispatch PAT | classic `repo`+`workflow` (в заголовках всех cron-job.org jobs) |
 
 Шаги пайплайна (вс 19:00):
 1. Токены `YANDEX_DIRECT_TOKEN_e-*` → `campaigns.get`, имя «Пополнение»
@@ -173,22 +174,11 @@ Dispatch URL pattern: `https://api.github.com/repos/Zardozom/yandex-direct-otche
 3. Sheets API → лист `Пополнение`: Аккаунт \| Номер кампании \| Статус \| Дата проверки \| Дата разархивации
 4. Выкл. авто-разархивации: `AUTO_UNARCHIVE=0` (по умолчанию включено). Ручной алиас: `unarchive_popolnenie.py`
 
-Копии уже в **Drive-зеркале** репо `yandex-direct-otchety` (папка Drive `1ff8_FvJWQy6vGuG0X-YovhZ8jPsiKFcG` = `D:\GolgleDrive\Cursor\yandex-direct-otchety`):
+**В `Zardozom/yandex-direct-otchety` `main` (с 2026-10-29):**  
+`scripts/popolnenie_status.py` + `.github/workflows/popolnenie-status.yml` (commit `f65bc1a`).  
+Smoke dispatch: Actions run успешен. cron-job.org **8739752** + балансы/отчёт переведены на classic PAT.
 
-| Путь в репо | Drive |
-|---|---|
-| `scripts/popolnenie_status.py` | id `1ZDr2Yit6uK9da914YutiOfH8_87jDJOC` |
-| `.github/workflows/popolnenie-status.yml` | id `13YfR_VPk8ZclMo5vomPjL1dYJfigigpg` |
-| `scripts/commit_popolnenie_to_github.ps1` | id `1r3tK-6Qx-oZ25fjiGDMTCXVTZ0WMOXT4` |
-
-**Один раз запушить в GitHub** (Cloud PAT без Contents write — из Cloud нельзя):
-
-```powershell
-cd D:\GolgleDrive\Cursor\yandex-direct-otchety
-powershell -File scripts\commit_popolnenie_to_github.ps1
-```
-
-После push cron-job.org **8739752** начнёт успешно диспатчить workflow. До push рабочий путь: Cloud timer + `cloud_run_popolnenie.py`.
+Копии также в Drive-зеркале (`1ff8_FvJWQy6vGuG0X-YovhZ8jPsiKFcG` = `D:\GolgleDrive\Cursor\yandex-direct-otchety`).
 
 Первый прогон: 2026-10-28 → 12 аккаунтов (см. `tasks/2026-10-28-popolnenie-sheet.md`).
 

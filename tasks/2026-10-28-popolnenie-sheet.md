@@ -39,4 +39,4 @@ SA `cursor-sheets@starry-minutia-307711` + Sheets API (не Drive MCP). Токе
 
 Следующий запланированный cron-job: **2026-11-01 19:00 МСК**.
 
-**Блокер otchety:** fine-grained PAT без Contents — нельзя запушить workflow в `Zardozom/yandex-direct-otchety` из Cloud. Пока Actions-файл не в `main`, dispatch 8739752 вернёт ошибку; рабочий путь — Cloud timer + `cloud_run_popolnenie.py`. После копирования файлов в otchety на VAJRAPANI и push — Actions+cron-job становятся основным путём.
+**Закрыто 2026-10-29:** файлы в otchety `main` (`f65bc1a`), smoke Actions success, cron-job.org на classic PAT `repo`+`workflow`. Основной путь — Actions + cron-job **8739752**; Cloud timer — backup.

@@ -9,14 +9,9 @@
 
 Пополнение специально на **час раньше** отчёта.
 
-## Файлы для репо `Zardozom/yandex-direct-otchety`
+## Файлы в репо `Zardozom/yandex-direct-otchety`
 
-Файлы уже в Drive-зеркале otchety (`scripts/` + `.github/workflows/`). Один push с VAJRAPANI:
-
-```powershell
-cd D:\GolgleDrive\Cursor\yandex-direct-otchety
-powershell -File scripts\commit_popolnenie_to_github.ps1
-```
+Уже в `main` (`scripts/popolnenie_status.py`, `.github/workflows/popolnenie-status.yml`). Drive-зеркало и handoff-копии в этом репо — для синхронизации ноутбуков.
 
 ## Колонки листа
 
