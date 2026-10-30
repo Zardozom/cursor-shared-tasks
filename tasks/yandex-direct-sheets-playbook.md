@@ -210,3 +210,9 @@ uv run python scripts/register_client.py \
 - Handoff-репо: https://github.com/Zardozom/cursor-shared-tasks
 - Cloud Agents: https://cursor.com/agents
 - Бриф ABC: https://docs.google.com/document/d/1Q1DPdcXQaPE7mLorYWUS_9tn7eYLwpqy8dELFTWlfJY/edit
+
+---
+
+## 9. Инцидент 2026-10-30 (перекос + Колтач)
+
+См. `tasks/yandex-direct/2026-10-30-sheet-skew-calltouch.md`. Фикс: PR #5/#6 в `yandex-direct-otchety`; ветка `cursor/fix-skew-calltouch-c586`.
