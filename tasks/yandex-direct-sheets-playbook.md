@@ -203,6 +203,13 @@ uv run python scripts/register_client.py \
 
 ---
 
+
+### Calltouch «Лиды Колтач» = канал Яндекс.Директ = `cpc`
+
+В UI Calltouch канал Директа — **Канал (utm_medium) = cpc**, source = все (часто `eLama-yandex`).  
+Фильтр в коде: `is_yandex_direct_channel` → `medium`/`utmMedium` == `cpc` (не exact source=yandex).  
+См. `tasks/yandex-direct/2026-10-30-calltouch-cpc-channel.md`. PR otchety: #7.
+
 ## 8. Связанные URL
 
 - Таблица: https://docs.google.com/spreadsheets/d/1gsjP650gW75Rc7eYwimRm578AzOX_V1Xh57r3cgrNSI/edit
