@@ -11,14 +11,14 @@ https://docs.google.com/spreadsheets/d/1gsjP650gW75Rc7eYwimRm578AzOX_V1Xh57r3cgr
 ## Дубровка · Лиды Колтач
 | Неделя | До (лиды / unique) | После (лиды / unique) |
 |---|---|---|
-| 19.10–25.10 | 3 / 0 | 3 / 3 |
-| 12.10–18.10 | 0 / 0 | 2 / 1 |
-| 05.10–11.10 | 0 / 0 | 1 / 1 |
-| 28.09–04.10 | 0 / 0 | 0 / 0 |
+| 19.10–25.10 | 3 / 0 | **78 / 44** |
+| 12.10–18.10 | 0 / 0 | **104 / 50** |
+| 05.10–11.10 | 0 / 0 | **85 / 54** |
+| 28.09–04.10 | 0 / 0 | **90 / 53** |
 
-Стоимость достижения Колтач: было «—» везде → посчитана (кроме недели без unique).
+Стоимость достижения Колтач: было «—» везде → ~3,9–4,6 тыс. ₽ (spend / unique).
 
-Sample канала: `source/utmSource=eLama-yandex`, `medium=cpc`, `yandexDirect=null`.
+Sample канала: `source/utmSource=eLama-yandex`, `medium=cpc`, `yandexDirect=null` — раньше строгий фильтр это отбрасывал.
 
 ## PRs (otchety)
 - https://github.com/Zardozom/yandex-direct-otchety/pull/5 — кампании внизу + Direct-only
