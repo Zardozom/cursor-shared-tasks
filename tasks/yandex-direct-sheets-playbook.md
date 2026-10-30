@@ -210,3 +210,13 @@ uv run python scripts/register_client.py \
 - Handoff-репо: https://github.com/Zardozom/cursor-shared-tasks
 - Cloud Agents: https://cursor.com/agents
 - Бриф ABC: https://docs.google.com/document/d/1Q1DPdcXQaPE7mLorYWUS_9tn7eYLwpqy8dELFTWlfJY/edit
+
+---
+
+## 9. Кампании внизу + Колтач Direct (с 2026-10-30)
+
+Код: ветка `cursor/campaign-bottom-direct-leads-be68` / PR #5 в `yandex-direct-otchety`.
+На коротком листе кампании — **внизу** подписью `"аккаунт" "кампания"`; вложенные `РК id · имя` не пишем.
+«Лиды Колтач» / «Уникальные Лиды Колтач» = только канал Яндекс.Директ.
+Подробности: `tasks/2026-10-30-campaign-bottom-direct-leads.md`.
+
